@@ -138,6 +138,39 @@ T_V_FLOAT ForceLJNeigh<NeighborClass>::compute_energy(System* system, Binning* b
   type = system->type;
   id = system->id;
   T_V_FLOAT energy;
+
+  //T_INT team_scratch_size = sna.size_team_scratch_arrays();
+  //T_INT thread_scratch_size = sna.size_thread_scratch_arrays();
+
+  //printf("Sizes: %i %i\n",team_scratch_size/1024,thread_scratch_size/1024);
+  int team_size_max = Kokkos::TeamPolicy<>::team_size_max(*this);
+  int vector_length = 8;
+#ifdef KOKKOS_ENABLE_CUDA
+  int team_size = 1;//max_neighs;
+  if(team_size*vector_length > team_size_max)
+    team_size = team_size_max/vector_length;
+#else
+  int team_size = 1;
+#endif
+
+  Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace,TagFullNeighTeam<true>,Kokkos::IndexType<T_INT> > policy(system->N_local,team_size,vector_length);
+
+  Kokkos::parallel_for("ForceLJ::compute",policy
+      //.set_scratch_size(1,Kokkos::PerThread(thread_scratch_size))
+      //.set_scratch_size(1,Kokkos::PerTeam(team_scratch_size))
+    ,*this);
+
+  /*if (use_stackparams) {
+    if(half_neigh)
+      Kokkos::parallel_for("ForceLJNeigh::compute", t_policy_half_neigh_stackparams(0, system->N_local), *this);
+    else
+      Kokkos::parallel_for("ForceLJNeigh::compute", t_policy_full_neigh_stackparams(0, system->N_local), *this);
+  } else {
+    if(half_neigh)
+      Kokkos::parallel_for("ForceLJNeigh::compute", t_policy_half_neigh(0, system->N_local), *this);
+    else
+      Kokkos::parallel_for("ForceLJNeigh::compute", t_policy_full_neigh(0, system->N_local), *this);
+  }*/
   if (use_stackparams) {
     if(half_neigh)
       Kokkos::parallel_reduce("ForceLJNeigh::compute_energy", t_policy_half_neigh_pe_stackparams(0, system->N_local), *this, energy);
@@ -157,6 +190,56 @@ T_V_FLOAT ForceLJNeigh<NeighborClass>::compute_energy(System* system, Binning* b
 
 template<class NeighborClass>
 const char* ForceLJNeigh<NeighborClass>::name() { return half_neigh?"ForceLJNeighHalf":"ForceLJNeighFull"; }
+
+template<class NeighborClass>
+template<bool STACKPARAMS>
+KOKKOS_INLINE_FUNCTION
+void ForceLJNeigh<NeighborClass>::operator() (TagFullNeighTeam<STACKPARAMS>, const typename Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace, TagFullNeighTeam<STACKPARAMS> >::member_type& team) const {
+  const int i = team.league_rank();
+  const T_F_FLOAT x_i = x(i,0);
+  const T_F_FLOAT y_i = x(i,1);
+  const T_F_FLOAT z_i = x(i,2);
+  const int type_i = type(i);
+
+  typename t_neigh_list::t_neighs neighs_i = neigh_list.get_neighs(i);
+
+  const int num_neighs = neighs_i.get_num_neighs();
+
+  //double fsum;
+
+  if (team.team_rank() == 0)
+  Kokkos::parallel_for(Kokkos::ThreadVectorRange(team,num_neighs),
+      [&] (const int jj) {
+
+  //for(int jj = 0; jj < num_neighs; jj++) {
+    T_INT j = neighs_i(jj);
+    const T_F_FLOAT dx = x_i - x(j,0);
+    const T_F_FLOAT dy = y_i - x(j,1);
+    const T_F_FLOAT dz = z_i - x(j,2);
+
+    const int type_j = type(j);
+    const T_F_FLOAT rsq = dx*dx + dy*dy + dz*dz;
+
+    const T_F_FLOAT cutsq_ij = STACKPARAMS?stack_cutsq[type_i][type_j]:rnd_cutsq(type_i,type_j);
+
+    if( rsq < cutsq_ij ) {
+      const T_F_FLOAT lj1_ij = STACKPARAMS?stack_lj1[type_i][type_j]:rnd_lj1(type_i,type_j);
+      const T_F_FLOAT lj2_ij = STACKPARAMS?stack_lj2[type_i][type_j]:rnd_lj2(type_i,type_j);
+
+      T_F_FLOAT r2inv = 1.0/rsq;
+      T_F_FLOAT r6inv = r2inv*r2inv*r2inv;
+      T_F_FLOAT fpair = (r6inv * (lj1_ij*r6inv - lj2_ij)) * r2inv;
+      f_a(i,0) += dx*fpair;
+      f_a(i,1) += dy*fpair;
+      f_a(i,2) += dz*fpair;
+    }
+  });
+
+  //f(i,0) += fsum.x;
+  //f(i,1) += fsum.y;
+  //f(i,2) += fsum.z;
+
+}
 
 template<class NeighborClass>
 template<bool STACKPARAMS>

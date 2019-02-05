@@ -91,7 +91,11 @@ private:
   t_neigh_list neigh_list;
 
 public:
+
   typedef T_V_FLOAT value_type;
+
+  template<bool STACKPARAMS>
+  struct TagFullNeighTeam {};
 
   template<bool STACKPARAMS>
   struct TagFullNeigh {};
@@ -121,6 +125,10 @@ public:
 
   void compute(System* system, Binning* binning, Neighbor* neighbor );
   T_F_FLOAT compute_energy(System* system, Binning* binning, Neighbor* neighbor);
+
+  template<bool STACKPARAMS>
+  KOKKOS_INLINE_FUNCTION
+  void operator() (TagFullNeighTeam<STACKPARAMS>, const typename Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace, TagFullNeighTeam<STACKPARAMS> >::member_type& team) const;
 
   template<bool STACKPARAMS>
   KOKKOS_INLINE_FUNCTION
