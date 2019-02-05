@@ -65,7 +65,7 @@
 template<class NeighborClass>
 class ForceLJNeigh: public Force {
 private:
-  int N_local,ntypes;
+  int N_local,ntypes,atoms_per_team;
   t_x_const_rnd x;
   t_f f;
   t_f_atomic f_a;
@@ -91,7 +91,6 @@ private:
   t_neigh_list neigh_list;
 
 public:
-
   typedef T_V_FLOAT value_type;
 
   template<bool STACKPARAMS>

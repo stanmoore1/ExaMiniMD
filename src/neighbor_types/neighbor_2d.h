@@ -116,7 +116,7 @@ struct NeighList2D {
   T_INT maxneighs;
 
   Kokkos::View<T_INT*, MemorySpace> num_neighs;
-  Kokkos::View<T_INT**, MemorySpace> neighs;
+  Kokkos::View<T_INT**, Kokkos::LayoutRight, MemorySpace> neighs;
 };
 
 template<class MemorySpace>
@@ -305,7 +305,7 @@ public:
 
       // Resize NeighborList
       if( neigh_list.neighs.extent(0) < N_local + 1 || neigh_list.neighs.extent(1) < neigh_list.maxneighs )
-        neigh_list.neighs = Kokkos::View<T_INT**, MemorySpace> ("Neighbor2D::neighs", N_local + 1, neigh_list.maxneighs);
+        neigh_list.neighs = Kokkos::View<T_INT**, Kokkos::LayoutRight, MemorySpace> ("Neighbor2D::neighs", N_local + 1, neigh_list.maxneighs);
 
 
       // Fill the NeighborList
